@@ -80,12 +80,17 @@ else
 fi
 
 # Full hostname
-FULL_HOSTNAME="$TS_HOSTNAME.$TS_DOMAIN"
+full_hostname="${TS_HOSTNAME}.${TS_DOMAIN}"
 
-# Add error handling for certificate obtainment
-log "Obtaining TLS certificate for $FULL_HOSTNAME..."
-if ! tailscale cert "$FULL_HOSTNAME"; then
-    log "Failed to obtain TLS certificate. Please check your Tailscale configuration and try again."
+# Obtain TLS certificate
+log "Obtaining TLS certificate for ${full_hostname}..."
+
+# Remove the trailing dot if it exists
+cert_hostname="${full_hostname%%.}"
+
+if ! tailscale cert "${cert_hostname}"; then
+    log "Failed to obtain TLS certificate. Error: $?"
+    log "Please check your Tailscale configuration and try again."
     exit 1
 fi
 

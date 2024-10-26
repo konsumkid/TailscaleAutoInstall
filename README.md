@@ -17,7 +17,7 @@ This script automates the process of installing Tailscale on a Proxmox server an
 ## Installation
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/tailscale-proxmox-setup.git
+   git clone https://github.com/konsumkid/TailscaleAutoInstall.git
    ```
 2. Navigate to the project directory:
    ```
