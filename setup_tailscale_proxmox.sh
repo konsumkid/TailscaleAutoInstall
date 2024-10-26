@@ -111,7 +111,7 @@ if ! tailscale cert "${cert_hostname}"; then
 fi
 
 # Check if certificate files exist before copying
-if [ ! -f "$FULL_HOSTNAME.crt" ] || [ ! -f "$FULL_HOSTNAME.key" ]; then
+if [ ! -f "$cert_hostname.crt" ] || [ ! -f "$cert_hostname.key" ]; then
     log "Certificate files not found. Please check if the certificate was obtained successfully."
     exit 1
 fi
@@ -123,8 +123,8 @@ cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.$(dat
 
 # Install the new certificate and key
 log "Installing new TLS certificate..."
-cp "$FULL_HOSTNAME.crt" /etc/pve/local/pveproxy-ssl.pem
-cp "$FULL_HOSTNAME.key" /etc/pve/local/pveproxy-ssl.key
+cp "$cert_hostname.crt" /etc/pve/local/pveproxy-ssl.pem
+cp "$cert_hostname.key" /etc/pve/local/pveproxy-ssl.key
 
 # Restart pveproxy service
 log "Restarting Proxmox proxy service..."
@@ -142,15 +142,15 @@ cat <<EOF > "$RENEW_SCRIPT"
 # Renew Tailscale TLS certificate for Proxmox
 
 # Obtain new certificate
-tailscale cert $FULL_HOSTNAME
+tailscale cert $cert_hostname
 
 # Backup existing certificates
 #cp /etc/pve/local/pveproxy-ssl.pem "/etc/pve/local/pveproxy-ssl.pem.backup.\$(date +%F_%T)"
 #cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.\$(date +%F_%T)"
 
 # Install new certificate
-cp $FULL_HOSTNAME.crt /etc/pve/local/pveproxy-ssl.pem
-cp $FULL_HOSTNAME.key /etc/pve/local/pveproxy-ssl.key
+cp $cert_hostname.crt /etc/pve/local/pveproxy-ssl.pem
+cp $cert_hostname.key /etc/pve/local/pveproxy-ssl.key
 
 # Restart pveproxy service
 systemctl restart pveproxy
@@ -170,10 +170,10 @@ chmod +x "$RENEW_SCRIPT"
 
 log "Automatic certificate renewal set up with cron."
 
-log "Configuration complete. You can now access Proxmox at https://$FULL_HOSTNAME:8006/"
+log "Configuration complete. You can now access Proxmox at https://$cert_hostname:8006/"
 
 # Final message
 echo -e "\nPlease ensure the following:"
 echo "- MagicDNS is enabled in your Tailscale admin console."
-echo "- You can access https://$FULL_HOSTNAME:8006/ from devices connected to your Tailscale network."
+echo "- You can access https://$cert_hostname:8006/ from devices connected to your Tailscale network."
 echo -e "\nIf you encounter any issues, please check the logs or ask for assistance."
