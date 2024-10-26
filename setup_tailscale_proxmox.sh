@@ -88,6 +88,22 @@ log "Obtaining TLS certificate for ${full_hostname}..."
 # Remove the trailing dot if it exists
 cert_hostname="${full_hostname%%.}"
 
+# Explanation:
+# This line uses parameter expansion to remove a trailing dot:
+# 1. ${variable%%pattern} removes the longest matching suffix pattern
+# 2. The '.' in %%. is escaped to match a literal dot
+# 3. If there's a trailing dot, it's removed; if not, the string is unchanged
+#
+# How it works step by step:
+# - If full_hostname = "example.com.":
+#   1. %% looks for the longest suffix matching '.'
+#   2. It finds the trailing dot and removes it
+#   3. cert_hostname becomes "example.com"
+# - If full_hostname = "example.com":
+#   1. %% looks for a suffix ending in '.'
+#   2. No such suffix is found
+#   3. cert_hostname remains "example.com"
+
 if ! tailscale cert "${cert_hostname}"; then
     log "Failed to obtain TLS certificate. Error: $?"
     log "Please check your Tailscale configuration and try again."
@@ -129,8 +145,8 @@ cat <<EOF > "$RENEW_SCRIPT"
 tailscale cert $FULL_HOSTNAME
 
 # Backup existing certificates
-cp /etc/pve/local/pveproxy-ssl.pem "/etc/pve/local/pveproxy-ssl.pem.backup.\$(date +%F_%T)"
-cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.\$(date +%F_%T)"
+#cp /etc/pve/local/pveproxy-ssl.pem "/etc/pve/local/pveproxy-ssl.pem.backup.\$(date +%F_%T)"
+#cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.\$(date +%F_%T)"
 
 # Install new certificate
 cp $FULL_HOSTNAME.crt /etc/pve/local/pveproxy-ssl.pem
