@@ -8,6 +8,11 @@ log() {
     echo -e "[$(date +"%Y-%m-%d %T")] $*"
 }
 
+# Function to check if a service exists and is active
+service_exists_and_active() {
+    systemctl is-active --quiet "$1"
+}
+
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
     log "Please run this script as root."
@@ -151,9 +156,49 @@ if ! cp "$cert_hostname.key" /etc/pve/local/pveproxy-ssl.key; then
     exit 1
 fi
 
-# Restart pveproxy service
-log "Restarting Proxmox proxy service..."
-systemctl restart pveproxy
+# Check if this is a Proxmox VE or Proxmox Backup Server system
+if [ -f "/etc/pve/pve.cfg" ]; then
+    SYSTEM_TYPE="PVE"
+    log "Detected Proxmox VE system."
+elif [ -f "/etc/proxmox-backup/proxmox-backup.cfg" ]; then
+    SYSTEM_TYPE="PBS"
+    log "Detected Proxmox Backup Server system."
+else
+    SYSTEM_TYPE="UNKNOWN"
+    log "Warning: This doesn't appear to be a Proxmox VE or Proxmox Backup Server system."
+    log "The script will continue, but some Proxmox-specific operations may fail."
+fi
+
+# Restart appropriate service based on the system type
+log "Attempting to restart appropriate service..."
+case $SYSTEM_TYPE in
+    "PVE")
+        if service_exists_and_active "pveproxy.service"; then
+            if ! systemctl restart pveproxy.service; then
+                log "Warning: Failed to restart pveproxy.service. You may need to restart it manually."
+            else
+                log "Successfully restarted pveproxy.service."
+            fi
+        else
+            log "Warning: pveproxy.service not found or not active."
+        fi
+        ;;
+    "PBS")
+        if service_exists_and_active "proxmox-backup-proxy.service"; then
+            if ! systemctl restart proxmox-backup-proxy.service; then
+                log "Warning: Failed to restart proxmox-backup-proxy.service. You may need to restart it manually."
+            else
+                log "Successfully restarted proxmox-backup-proxy.service."
+            fi
+        else
+            log "Warning: proxmox-backup-proxy.service not found or not active."
+        fi
+        ;;
+    *)
+        log "No Proxmox-specific service found to restart."
+        log "You may need to manually configure your web server to use the new certificates."
+        ;;
+esac
 
 # Set up automatic certificate renewal
 log "Setting up automatic certificate renewal."
@@ -195,10 +240,21 @@ chmod +x "$RENEW_SCRIPT"
 
 log "Automatic certificate renewal set up with cron."
 
-log "Configuration complete. You can now access Proxmox at https://$cert_hostname:8006/"
+# Adjust the final message based on the system type
+case $SYSTEM_TYPE in
+    "PVE")
+        log "Configuration complete. You can now access Proxmox VE at https://$cert_hostname:8006/"
+        ;;
+    "PBS")
+        log "Configuration complete. You can now access Proxmox Backup Server at https://$cert_hostname:8007/"
+        ;;
+    *)
+        log "Configuration complete. Please check your system's configuration for the correct access URL."
+        ;;
+esac
 
 # Final message
 echo -e "\nPlease ensure the following:"
 echo "- MagicDNS is enabled in your Tailscale admin console."
-echo "- You can access https://$cert_hostname:8006/ from devices connected to your Tailscale network."
+echo "- You can access the appropriate URL from devices connected to your Tailscale network."
 echo -e "\nIf you encounter any issues, please check the logs or ask for assistance."
