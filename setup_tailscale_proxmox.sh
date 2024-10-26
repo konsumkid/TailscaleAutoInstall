@@ -118,8 +118,17 @@ fi
 
 # Backup existing certificates
 log "Backing up existing Proxmox certificates..."
-cp /etc/pve/local/pveproxy-ssl.pem "/etc/pve/local/pveproxy-ssl.pem.backup.$(date +%F_%T)"
-cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.$(date +%F_%T)"
+if [ -f "/etc/pve/local/pveproxy-ssl.pem" ]; then
+    cp /etc/pve/local/pveproxy-ssl.pem "/etc/pve/local/pveproxy-ssl.pem.backup.$(date +%F_%T)"
+else
+    log "Warning: /etc/pve/local/pveproxy-ssl.pem not found. Skipping backup."
+fi
+
+if [ -f "/etc/pve/local/pveproxy-ssl.key" ]; then
+    cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.$(date +%F_%T)"
+else
+    log "Warning: /etc/pve/local/pveproxy-ssl.key not found. Skipping backup."
+fi
 
 # Install the new certificate and key
 log "Installing new TLS certificate..."
