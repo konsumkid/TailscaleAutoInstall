@@ -130,10 +130,26 @@ else
     log "Warning: /etc/pve/local/pveproxy-ssl.key not found. Skipping backup."
 fi
 
+# Ensure the directory exists
+log "Ensuring /etc/pve/local/ directory exists..."
+if [ ! -d "/etc/pve/local" ]; then
+    if ! mkdir -p /etc/pve/local; then
+        log "Error: Failed to create /etc/pve/local directory. Please check permissions."
+        exit 1
+    fi
+fi
+
 # Install the new certificate and key
 log "Installing new TLS certificate..."
-cp "$cert_hostname.crt" /etc/pve/local/pveproxy-ssl.pem
-cp "$cert_hostname.key" /etc/pve/local/pveproxy-ssl.key
+if ! cp "$cert_hostname.crt" /etc/pve/local/pveproxy-ssl.pem; then
+    log "Error: Failed to copy certificate. Please check permissions and file existence."
+    exit 1
+fi
+
+if ! cp "$cert_hostname.key" /etc/pve/local/pveproxy-ssl.key; then
+    log "Error: Failed to copy key. Please check permissions and file existence."
+    exit 1
+fi
 
 # Restart pveproxy service
 log "Restarting Proxmox proxy service..."
