@@ -55,7 +55,7 @@ read -p "After authentication, press Enter to continue..."
 TIMEOUT=300
 START_TIME=$(date +%s)
 while true; do
-    if tailscale status | grep -q "100\."; then
+    if tailscale status --json | jq -e '.Self.Online == true' >/dev/null; then
         log "Tailscale is connected."
         break
     else
@@ -121,39 +121,42 @@ if [ ! -f "$cert_hostname.crt" ] || [ ! -f "$cert_hostname.key" ]; then
     exit 1
 fi
 
+# Determine Proxmox node name and certificate paths
+NODE_NAME=$(hostname)
+PVE_CERT_DIR="/etc/pve/nodes/$NODE_NAME"
+PBS_CERT_DIR="/etc/proxmox-backup"
+
 # Backup existing certificates
 log "Backing up existing Proxmox certificates..."
-if [ -f "/etc/pve/local/pveproxy-ssl.pem" ]; then
-    cp /etc/pve/local/pveproxy-ssl.pem "/etc/pve/local/pveproxy-ssl.pem.backup.$(date +%F_%T)"
+if [ -f "$PVE_CERT_DIR/pveproxy-ssl.pem" ]; then
+    cp "$PVE_CERT_DIR/pveproxy-ssl.pem" "$PVE_CERT_DIR/pveproxy-ssl.pem.backup.$(date +%F_%T)"
 else
-    log "Warning: /etc/pve/local/pveproxy-ssl.pem not found. Skipping backup."
+    log "Warning: $PVE_CERT_DIR/pveproxy-ssl.pem not found. Skipping backup."
 fi
 
-if [ -f "/etc/pve/local/pveproxy-ssl.key" ]; then
-    cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.$(date +%F_%T)"
+if [ -f "$PVE_CERT_DIR/pveproxy-ssl.key" ]; then
+    cp "$PVE_CERT_DIR/pveproxy-ssl.key" "$PVE_CERT_DIR/pveproxy-ssl.key.backup.$(date +%F_%T)"
 else
-    log "Warning: /etc/pve/local/pveproxy-ssl.key not found. Skipping backup."
-fi
-
-# Ensure the directory exists
-log "Ensuring /etc/pve/local/ directory exists..."
-if [ ! -d "/etc/pve/local" ]; then
-    if ! mkdir -p /etc/pve/local; then
-        log "Error: Failed to create /etc/pve/local directory. Please check permissions."
-        exit 1
-    fi
+    log "Warning: $PVE_CERT_DIR/pveproxy-ssl.key not found. Skipping backup."
 fi
 
 # Install the new certificate and key
 log "Installing new TLS certificate..."
-if ! cp "$cert_hostname.crt" /etc/pve/local/pveproxy-ssl.pem; then
+if ! cp "$cert_hostname.crt" "$PVE_CERT_DIR/pveproxy-ssl.pem"; then
     log "Error: Failed to copy certificate. Please check permissions and file existence."
     exit 1
 fi
 
-if ! cp "$cert_hostname.key" /etc/pve/local/pveproxy-ssl.key; then
+if ! cp "$cert_hostname.key" "$PVE_CERT_DIR/pveproxy-ssl.key"; then
     log "Error: Failed to copy key. Please check permissions and file existence."
     exit 1
+fi
+
+# Handle Proxmox Backup Server certificates
+if [ "$SYSTEM_TYPE" = "PBS" ]; then
+    log "Installing PBS certificates..."
+    cp "$cert_hostname.crt" "$PBS_CERT_DIR/proxy-cert.pem"
+    cp "$cert_hostname.key" "$PBS_CERT_DIR/proxy-key.pem"
 fi
 
 # Check if this is a Proxmox VE or Proxmox Backup Server system
@@ -206,24 +209,36 @@ log "Setting up automatic certificate renewal."
 # Renewal script path
 RENEW_SCRIPT="/usr/local/bin/renew_tailscale_cert.sh"
 
-# Create renewal script
+# Create renewal script with error handling
 cat <<EOF > "$RENEW_SCRIPT"
 #!/bin/bash
-# Renew Tailscale TLS certificate for Proxmox
+set -e
+
+# Get current node name and paths
+NODE_NAME=\$(hostname)
+PVE_CERT_DIR="/etc/pve/nodes/\$NODE_NAME"
+PBS_CERT_DIR="/etc/proxmox-backup"
 
 # Obtain new certificate
-tailscale cert $cert_hostname
-
-# Backup existing certificates
-#cp /etc/pve/local/pveproxy-ssl.pem "/etc/pve/local/pveproxy-ssl.pem.backup.\$(date +%F_%T)"
-#cp /etc/pve/local/pveproxy-ssl.key "/etc/pve/local/pveproxy-ssl.key.backup.\$(date +%F_%T)"
+if ! tailscale cert $cert_hostname; then
+    echo "Failed to renew certificate"
+    exit 1
+fi
 
 # Install new certificate
-cp $cert_hostname.crt /etc/pve/local/pveproxy-ssl.pem
-cp $cert_hostname.key /etc/pve/local/pveproxy-ssl.key
+cp $cert_hostname.crt $PVE_CERT_DIR/pveproxy-ssl.pem
+cp $cert_hostname.key $PVE_CERT_DIR/pveproxy-ssl.key
 
-# Restart pveproxy service
-systemctl restart pveproxy
+# Restart Proxmox services
+systemctl restart pveproxy.service
+systemctl restart pvedaemon.service
+
+# Handle PBS if installed
+if [ -f "/etc/proxmox-backup/proxmox-backup.cfg" ]; then
+    cp $cert_hostname.crt $PBS_CERT_DIR/proxy-cert.pem
+    cp $cert_hostname.key $PBS_CERT_DIR/proxy-key.pem
+    systemctl restart proxmox-backup-proxy.service
+fi
 EOF
 
 # Check if the renewal script was created successfully
