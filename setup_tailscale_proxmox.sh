@@ -21,6 +21,19 @@ fi
 
 log "Starting Tailscale installation and HTTPS configuration for Proxmox."
 
+# Check if this is a Proxmox VE or Proxmox Backup Server system
+if [ -f "/etc/pve/.members" ] || [ -d "/etc/pve/nodes" ]; then
+    SYSTEM_TYPE="PVE"
+    log "Detected Proxmox VE system."
+elif [ -f "/etc/proxmox-backup/proxmox-backup.cfg" ] || [ -d "/etc/proxmox-backup" ]; then
+    SYSTEM_TYPE="PBS"
+    log "Detected Proxmox Backup Server system."
+else
+    SYSTEM_TYPE="UNKNOWN"
+    log "Warning: This doesn't appear to be a Proxmox VE or Proxmox Backup Server system."
+    log "The script will continue, but some Proxmox-specific operations may fail."
+fi
+
 # Update package lists
 log "Updating package lists..."
 apt update
@@ -126,51 +139,61 @@ NODE_NAME=$(hostname)
 PVE_CERT_DIR="/etc/pve/nodes/$NODE_NAME"
 PBS_CERT_DIR="/etc/proxmox-backup"
 
-# Backup existing certificates
-log "Backing up existing Proxmox certificates..."
-if [ -f "$PVE_CERT_DIR/pveproxy-ssl.pem" ]; then
-    cp "$PVE_CERT_DIR/pveproxy-ssl.pem" "$PVE_CERT_DIR/pveproxy-ssl.pem.backup.$(date +%F_%T)"
-else
-    log "Warning: $PVE_CERT_DIR/pveproxy-ssl.pem not found. Skipping backup."
-fi
+# Backup and install certificates based on system type
+log "Backing up existing certificates and installing new ones..."
 
-if [ -f "$PVE_CERT_DIR/pveproxy-ssl.key" ]; then
-    cp "$PVE_CERT_DIR/pveproxy-ssl.key" "$PVE_CERT_DIR/pveproxy-ssl.key.backup.$(date +%F_%T)"
-else
-    log "Warning: $PVE_CERT_DIR/pveproxy-ssl.key not found. Skipping backup."
-fi
+case $SYSTEM_TYPE in
+    "PVE")
+        # Backup existing PVE certificates
+        if [ -f "$PVE_CERT_DIR/pveproxy-ssl.pem" ]; then
+            cp "$PVE_CERT_DIR/pveproxy-ssl.pem" "$PVE_CERT_DIR/pveproxy-ssl.pem.backup.$(date +%F_%T)"
+            log "Backed up existing PVE certificate."
+        fi
+        if [ -f "$PVE_CERT_DIR/pveproxy-ssl.key" ]; then
+            cp "$PVE_CERT_DIR/pveproxy-ssl.key" "$PVE_CERT_DIR/pveproxy-ssl.key.backup.$(date +%F_%T)"
+            log "Backed up existing PVE key."
+        fi
 
-# Install the new certificate and key
-log "Installing new TLS certificate..."
-if ! cp "$cert_hostname.crt" "$PVE_CERT_DIR/pveproxy-ssl.pem"; then
-    log "Error: Failed to copy certificate. Please check permissions and file existence."
-    exit 1
-fi
+        # Install new PVE certificates
+        log "Installing new TLS certificate for Proxmox VE..."
+        if ! cp "$cert_hostname.crt" "$PVE_CERT_DIR/pveproxy-ssl.pem"; then
+            log "Error: Failed to copy certificate. Please check permissions and directory existence."
+            exit 1
+        fi
+        if ! cp "$cert_hostname.key" "$PVE_CERT_DIR/pveproxy-ssl.key"; then
+            log "Error: Failed to copy key. Please check permissions and directory existence."
+            exit 1
+        fi
+        ;;
+    "PBS")
+        # Backup existing PBS certificates
+        if [ -f "$PBS_CERT_DIR/proxy.pem" ]; then
+            cp "$PBS_CERT_DIR/proxy.pem" "$PBS_CERT_DIR/proxy.pem.backup.$(date +%F_%T)"
+            log "Backed up existing PBS certificate."
+        fi
+        if [ -f "$PBS_CERT_DIR/proxy.key" ]; then
+            cp "$PBS_CERT_DIR/proxy.key" "$PBS_CERT_DIR/proxy.key.backup.$(date +%F_%T)"
+            log "Backed up existing PBS key."
+        fi
 
-if ! cp "$cert_hostname.key" "$PVE_CERT_DIR/pveproxy-ssl.key"; then
-    log "Error: Failed to copy key. Please check permissions and file existence."
-    exit 1
-fi
-
-# Handle Proxmox Backup Server certificates
-if [ "$SYSTEM_TYPE" = "PBS" ]; then
-    log "Installing PBS certificates..."
-    cp "$cert_hostname.crt" "$PBS_CERT_DIR/proxy-cert.pem"
-    cp "$cert_hostname.key" "$PBS_CERT_DIR/proxy-key.pem"
-fi
-
-# Check if this is a Proxmox VE or Proxmox Backup Server system
-if [ -f "/etc/pve/pve.cfg" ]; then
-    SYSTEM_TYPE="PVE"
-    log "Detected Proxmox VE system."
-elif [ -f "/etc/proxmox-backup/proxmox-backup.cfg" ]; then
-    SYSTEM_TYPE="PBS"
-    log "Detected Proxmox Backup Server system."
-else
-    SYSTEM_TYPE="UNKNOWN"
-    log "Warning: This doesn't appear to be a Proxmox VE or Proxmox Backup Server system."
-    log "The script will continue, but some Proxmox-specific operations may fail."
-fi
+        # Install new PBS certificates
+        log "Installing new TLS certificate for Proxmox Backup Server..."
+        if ! cp "$cert_hostname.crt" "$PBS_CERT_DIR/proxy.pem"; then
+            log "Error: Failed to copy certificate. Please check permissions and directory existence."
+            exit 1
+        fi
+        if ! cp "$cert_hostname.key" "$PBS_CERT_DIR/proxy.key"; then
+            log "Error: Failed to copy key. Please check permissions and directory existence."
+            exit 1
+        fi
+        ;;
+    *)
+        log "Warning: Unknown system type. Skipping certificate installation."
+        log "You may need to manually install the certificates from:"
+        log "  Certificate: $cert_hostname.crt"
+        log "  Key: $cert_hostname.key"
+        ;;
+esac
 
 # Restart appropriate service based on the system type
 log "Attempting to restart appropriate service..."
@@ -214,31 +237,40 @@ cat <<EOF > "$RENEW_SCRIPT"
 #!/bin/bash
 set -e
 
+# System type detected during initial setup
+SYSTEM_TYPE="$SYSTEM_TYPE"
+
 # Get current node name and paths
 NODE_NAME=\$(hostname)
 PVE_CERT_DIR="/etc/pve/nodes/\$NODE_NAME"
 PBS_CERT_DIR="/etc/proxmox-backup"
+CERT_HOSTNAME="$cert_hostname"
 
 # Obtain new certificate
-if ! tailscale cert $cert_hostname; then
+if ! tailscale cert "\$CERT_HOSTNAME"; then
     echo "Failed to renew certificate"
     exit 1
 fi
 
-# Install new certificate
-cp $cert_hostname.crt $PVE_CERT_DIR/pveproxy-ssl.pem
-cp $cert_hostname.key $PVE_CERT_DIR/pveproxy-ssl.key
+# Install certificate and restart services based on system type
+case \$SYSTEM_TYPE in
+    "PVE")
+        cp "\$CERT_HOSTNAME.crt" "\$PVE_CERT_DIR/pveproxy-ssl.pem"
+        cp "\$CERT_HOSTNAME.key" "\$PVE_CERT_DIR/pveproxy-ssl.key"
+        systemctl restart pveproxy.service
+        ;;
+    "PBS")
+        cp "\$CERT_HOSTNAME.crt" "\$PBS_CERT_DIR/proxy.pem"
+        cp "\$CERT_HOSTNAME.key" "\$PBS_CERT_DIR/proxy.key"
+        systemctl restart proxmox-backup-proxy.service
+        ;;
+    *)
+        echo "Unknown system type: \$SYSTEM_TYPE"
+        exit 1
+        ;;
+esac
 
-# Restart Proxmox services
-systemctl restart pveproxy.service
-systemctl restart pvedaemon.service
-
-# Handle PBS if installed
-if [ -f "/etc/proxmox-backup/proxmox-backup.cfg" ]; then
-    cp $cert_hostname.crt $PBS_CERT_DIR/proxy-cert.pem
-    cp $cert_hostname.key $PBS_CERT_DIR/proxy-key.pem
-    systemctl restart proxmox-backup-proxy.service
-fi
+echo "Certificate renewed successfully for \$SYSTEM_TYPE"
 EOF
 
 # Check if the renewal script was created successfully

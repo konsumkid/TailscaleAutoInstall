@@ -21,7 +21,7 @@ This document provides guidance for AI assistants working with the TailscaleAuto
 ```
 TailscaleAutoInstall/
 ├── README.md                    # User-facing documentation
-├── setup_tailscale_proxmox.sh   # Main automation script (276 lines)
+├── setup_tailscale_proxmox.sh   # Main automation script (~300 lines)
 └── CLAUDE.md                    # This file - AI assistant guide
 ```
 
@@ -29,33 +29,32 @@ TailscaleAutoInstall/
 
 The script `setup_tailscale_proxmox.sh` follows this execution flow:
 
-1. **Initialization** (lines 1-20)
+1. **Initialization** (lines 1-35)
    - Sets strict mode with `set -e`
    - Defines helper functions (`log`, `service_exists_and_active`)
    - Root permission check
+   - **System type detection** (PVE vs PBS vs UNKNOWN)
 
-2. **Dependency Installation** (lines 22-42)
+2. **Dependency Installation** (lines 37-55)
    - Updates package lists
    - Installs `curl` and `jq`
    - Installs Tailscale (if not present)
 
-3. **Tailscale Configuration** (lines 44-70)
+3. **Tailscale Configuration** (lines 57-83)
    - Prompts for hostname
    - Starts Tailscale with user authentication
    - Waits for connection with 5-minute timeout
 
-4. **Certificate Management** (lines 72-161)
+4. **Certificate Management** (lines 85-196)
    - Retrieves MagicDNS domain
    - Obtains TLS certificate
-   - Backs up existing Proxmox certificates
-   - Installs new certificates
+   - Conditional backup and installation based on system type (PVE or PBS)
 
-5. **System Type Detection** (lines 162-204)
-   - Detects PVE vs PBS vs unknown
-   - Restarts appropriate services
+5. **Service Restart** (lines 198-227)
+   - Restarts appropriate services based on system type
 
-6. **Automatic Renewal Setup** (lines 206-276)
-   - Creates renewal script at `/usr/local/bin/renew_tailscale_cert.sh`
+6. **Automatic Renewal Setup** (lines 229-307)
+   - Creates system-type-aware renewal script at `/usr/local/bin/renew_tailscale_cert.sh`
    - Configures monthly cron job
 
 ## Code Conventions
@@ -90,7 +89,7 @@ The script `setup_tailscale_proxmox.sh` follows this execution flow:
 ### Certificate File Names
 
 - PVE: `pveproxy-ssl.pem` (cert), `pveproxy-ssl.key` (key)
-- PBS: `proxy-cert.pem` (cert), `proxy-key.pem` (key)
+- PBS: `proxy.pem` (cert), `proxy.key` (key)
 
 ## Development Workflows
 
@@ -131,13 +130,11 @@ Since this script requires root access and modifies system services, testing sho
 - Handles TLS certificates - never log certificate contents
 - Backup files are created with timestamps to prevent data loss
 
-### Known Quirks
+### Notes
 
-1. **Line 156-160**: PBS certificate handling occurs before system type detection (lines 162-173). This is a potential bug - PBS certificates are copied based on `$SYSTEM_TYPE` which may not be set yet.
-
-2. **Trailing Dot Removal** (lines 93-111): Extensive comments explain the `${full_hostname%%.}` expansion for removing trailing dots from DNS names.
-
-3. **Timeout**: 5-minute (300 second) timeout for Tailscale connection.
+- **Trailing Dot Removal**: The script uses `${full_hostname%%.}` expansion to remove trailing dots from DNS names (see comments in script).
+- **Timeout**: 5-minute (300 second) timeout for Tailscale connection.
+- **System Type Detection**: Uses directory/file existence checks (`/etc/pve/nodes`, `/etc/proxmox-backup`) rather than config file checks for more reliable detection.
 
 ### Dependencies
 
