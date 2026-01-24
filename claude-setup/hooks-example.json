@@ -1,0 +1,37 @@
+{
+  "$schema": "https://claude-code.com/schemas/hooks.json",
+  "description": "Agentfy webhook configuration for Claude Code",
+  "version": "1.0",
+  "webhookUrl": "REPLACE_WITH_YOUR_WEBHOOK_URL",
+  "hooks": {
+    "onSessionStart": {
+      "enabled": true,
+      "command": "curl -s -X POST '${AGENTFY_WEBHOOK_URL}' -H 'Content-Type: application/json' -d '{\"event\":\"agent_started\",\"agent_id\":\"${SESSION_ID}\",\"name\":\"Claude Code\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}'"
+    },
+    "onToolUse": {
+      "enabled": true,
+      "tools": ["edit", "write", "bash"],
+      "command": "curl -s -X POST '${AGENTFY_WEBHOOK_URL}' -H 'Content-Type: application/json' -d '{\"event\":\"permission_required\",\"agent_id\":\"${SESSION_ID}\",\"message\":\"Tool: ${TOOL_NAME} - ${TOOL_DESCRIPTION}\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}'"
+    },
+    "onTaskComplete": {
+      "enabled": true,
+      "command": "curl -s -X POST '${AGENTFY_WEBHOOK_URL}' -H 'Content-Type: application/json' -d '{\"event\":\"task_completed\",\"agent_id\":\"${SESSION_ID}\",\"message\":\"${TASK_SUMMARY}\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}'"
+    },
+    "onError": {
+      "enabled": true,
+      "command": "curl -s -X POST '${AGENTFY_WEBHOOK_URL}' -H 'Content-Type: application/json' -d '{\"event\":\"error\",\"agent_id\":\"${SESSION_ID}\",\"message\":\"${ERROR_MESSAGE}\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}'"
+    },
+    "onSessionEnd": {
+      "enabled": true,
+      "command": "curl -s -X POST '${AGENTFY_WEBHOOK_URL}' -H 'Content-Type: application/json' -d '{\"event\":\"agent_stopped\",\"agent_id\":\"${SESSION_ID}\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}'"
+    },
+    "onHeartbeat": {
+      "enabled": true,
+      "interval": 30,
+      "command": "curl -s -X POST '${AGENTFY_WEBHOOK_URL}' -H 'Content-Type: application/json' -d '{\"event\":\"heartbeat\",\"agent_id\":\"${SESSION_ID}\",\"status\":\"RUNNING\",\"timestamp\":\"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'\"}'"
+    }
+  },
+  "environment": {
+    "AGENTFY_WEBHOOK_URL": "REPLACE_WITH_YOUR_WEBHOOK_URL"
+  }
+}
