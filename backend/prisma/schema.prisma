@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Device {
+  id           String   @id @default(uuid())
+  pushToken    String   @unique
+  webhookToken String   @unique @default(uuid())
+  platform     String   @default("ios")
+  appVersion   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  agents       Agent[]
+
+  @@index([webhookToken])
+}
+
+model Agent {
+  id          String      @id @default(uuid())
+  deviceId    String
+  device      Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  externalId  String?     // ID from Claude Code
+  name        String?
+  status      AgentStatus @default(IDLE)
+  lastMessage String?
+  lastEvent   String?
+  startedAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([deviceId, externalId])
+  @@index([deviceId])
+  @@index([status])
+}
+
+enum AgentStatus {
+  IDLE
+  RUNNING
+  AWAITING_INPUT
+  COMPLETED
+  ERROR
+}
+
+model EventLog {
+  id          String   @id @default(uuid())
+  deviceId    String
+  agentId     String?
+  eventType   String
+  payload     String   // JSON string
+  processedAt DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([eventType])
+}

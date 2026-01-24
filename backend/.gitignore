@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-journal
+certs/
+*.p8
+.DS_Store
+coverage/

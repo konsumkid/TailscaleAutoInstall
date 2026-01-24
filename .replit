@@ -1,0 +1,44 @@
+run = "cd backend && npm run dev"
+entrypoint = "backend/src/index.ts"
+
+hidden = [".config", "package-lock.json"]
+
+[nix]
+channel = "stable-24_05"
+
+[env]
+PATH = "/home/runner/$REPL_SLUG/.config/npm/node_global/bin:/home/runner/$REPL_SLUG/node_modules/.bin:./node_modules/.bin"
+npm_config_prefix = "/home/runner/$REPL_SLUG/.config/npm/node_global"
+DATABASE_URL = "file:./dev.db"
+NODE_ENV = "development"
+
+[packager]
+language = "nodejs"
+
+[packager.features]
+packageSearch = true
+guessImports = true
+enabledForHosting = false
+
+[unitTest]
+language = "nodejs"
+
+[languages]
+
+[languages.typescript]
+pattern = "**/{*.ts,*.js,*.tsx,*.jsx}"
+
+[languages.typescript.languageServer]
+start = "typescript-language-server --stdio"
+
+[deployment]
+run = ["sh", "-c", "cd backend && npm run build && npm start"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 5555
+externalPort = 5555
